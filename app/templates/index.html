@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174e44">
+  <title>Студенти · Campus</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Campus — головна"><span class="brand-mark">C<span>·</span></span>campus<span class="brand-dot">.</span></a>
+    <p class="workspace-label">НАВЧАЛЬНИЙ ПРОСТІР</p>
+    <a class="nav-item" href="/" aria-current="page"><span aria-hidden="true">▦</span> Студенти <span class="nav-arrow" aria-hidden="true">↗</span></a>
+    <div class="sidebar-bottom"><span class="university-mark" aria-hidden="true">U</span><div>Університет<small>Керування студентами</small></div></div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar"><span>Навчальний простір <span class="breadcrumb-separator">/</span> <strong>Студенти</strong></span><span class="edition">CAMPUS / РЕЄСТР</span></header>
+    <main>
+      <div class="page-heading"><div><p class="eyebrow">ЛЮДИ, З ЯКИХ ПОЧИНАЄТЬСЯ УНІВЕРСИТЕТ</p><h1>Студенти<span>.</span></h1><p class="subtitle">Усі студенти та навчальні групи в одному місці.</p></div><button id="add-student" class="primary"><span aria-hidden="true">＋</span> Додати студента</button></div>
+
+      <section class="stats" aria-label="Статистика реєстру">
+        <div class="stat"><span class="stat-label">Усього студентів</span><strong id="student-count">—</strong><span class="stat-note">у вашому реєстрі</span></div>
+        <div class="stat"><span class="stat-label">Навчальних груп</span><strong id="group-count">—</strong><span class="stat-note">представлено в реєстрі</span></div>
+        <div class="stat stat-feature"><span class="small-tag">УСЕ ПІД РУКОЮ</span><p>Менше рутини.<br>Більше уваги студентам.</p><span class="feature-decoration" aria-hidden="true">↗</span></div>
+      </section>
+
+      <section class="registry" aria-labelledby="registry-title">
+        <div class="registry-heading"><h2 id="registry-title">Реєстр студентів <span id="result-count" class="count-pill">0</span></h2><span class="registry-caption">Актуальні дані вашої спільноти</span></div>
+        <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Пошук за ім’ям або email…" aria-label="Пошук за ім’ям, прізвищем або email" maxlength="200"></label><label class="group-filter"><span class="sr-only">Навчальна група</span><select id="group-filter"><option value="">Усі групи</option></select></label><button id="reset-filters" class="text-button" hidden>Скинути</button></div>
+        <div id="load-error" class="load-error" role="alert" hidden><span id="load-error-message"></span><button id="retry" class="secondary">Спробувати ще</button></div>
+        <div id="table-region" aria-busy="true">
+          <div class="table-scroll"><table><thead><tr><th scope="col">СТУДЕНТ</th><th scope="col">EMAIL</th><th scope="col">ГРУПА</th><th scope="col" class="actions-heading">ДІЇ</th></tr></thead><tbody id="students-body"></tbody></table></div>
+          <div id="empty-state" class="empty-state" hidden><span class="empty-icon" aria-hidden="true">▦</span><h3 id="empty-title">Ваш реєстр починається тут</h3><p id="empty-description">Додайте першого студента, щоб зберігати дані в одному місці.</p><button id="empty-add" class="secondary">＋ Додати студента</button></div>
+          <p id="loading" class="loading" role="status">Завантаження студентів…</p>
+        </div>
+        <footer class="table-footer"><span id="page-summary" aria-live="polite">Завантаження…</span><div class="pagination"><button id="previous-page" class="page-button" aria-label="Попередня сторінка" disabled>←</button><span id="page-number">1</span><button id="next-page" class="page-button" aria-label="Наступна сторінка" disabled>→</button></div></footer>
+      </section>
+      <footer class="page-footer"><span>Campus — простір для освіти</span><span>Порядок у даних. Фокус на навчанні.</span></footer>
+    </main>
+  </div>
+
+  <dialog id="student-dialog" aria-labelledby="form-title">
+    <form id="student-form" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">РЕЄСТР СТУДЕНТІВ</p><h2 id="form-title">Новий студент</h2></div><button type="button" class="close-button" id="close-form" aria-label="Закрити форму">×</button></div>
+      <p class="dialog-description">Заповніть усі поля. Email має бути унікальним.</p>
+      <div id="form-error" class="form-error" role="alert" hidden></div>
+      <div class="form-grid">
+        <label>Ім’я<input name="first_name" id="first_name" required maxlength="80" autocomplete="given-name" placeholder="Олена" aria-describedby="first_name-error"><small id="first_name-error" class="field-error"></small></label>
+        <label>Прізвище<input name="last_name" id="last_name" required maxlength="80" autocomplete="family-name" placeholder="Коваль" aria-describedby="last_name-error"><small id="last_name-error" class="field-error"></small></label>
+        <label class="full-width">Email<input name="email" id="email" type="email" required maxlength="254" autocomplete="email" placeholder="olena@example.com" aria-describedby="email-error"><small id="email-error" class="field-error"></small></label>
+        <label class="full-width">Навчальна група<input name="group" id="group" required maxlength="40" list="group-options" placeholder="Наприклад, КН-21" aria-describedby="group-error"><small id="group-error" class="field-error"></small><datalist id="group-options"></datalist></label>
+      </div>
+      <div class="dialog-actions"><button type="button" id="cancel-form" class="secondary">Скасувати</button><button type="submit" id="save-student" class="primary">Зберегти студента</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-dialog" aria-labelledby="delete-title"><form id="delete-form"><div class="delete-symbol" aria-hidden="true">!</div><h2 id="delete-title">Видалити студента?</h2><p id="delete-description" class="dialog-description"></p><p class="dialog-description">Цю дію неможливо скасувати.</p><p id="delete-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" id="cancel-delete" class="secondary">Скасувати</button><button type="submit" id="confirm-delete" class="danger">Видалити</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><div class="no-script">Для роботи реєстру увімкніть JavaScript у браузері.</div></noscript>
+</body>
+</html>
