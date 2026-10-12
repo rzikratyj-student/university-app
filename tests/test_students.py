@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.engine import make_url
 
 
 def test_page_and_assets(client):
@@ -87,7 +88,7 @@ def test_search_filters_and_pagination(client, student):
 
 
 def test_cyrillic_case_insensitive_search(client, student, app):
-    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
+    if make_url(app.config['SQLALCHEMY_DATABASE_URI']).get_backend_name() == 'sqlite':
         pytest.skip('SQLite does not support Unicode case folding; run with PostgreSQL.')
     client.post('/api/students', json=student)
     assert client.get('/api/students', query_string={'q': 'олена'}).get_json()['total'] == 1

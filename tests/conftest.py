@@ -3,6 +3,7 @@ import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
 from app import create_app, db
 from config import Config
@@ -16,13 +17,13 @@ def pytest_addoption(parser):
 def app(request):
     url = os.getenv('TEST_DATABASE_URL', 'sqlite://')
     if request.config.getoption('--postgres'):
-        url = Config.SQLALCHEMY_DATABASE_URI
-        if not url or not url.startswith('postgresql'):
+        url = os.getenv('TEST_DATABASE_URL') or Config.SQLALCHEMY_DATABASE_URI
+        if not url or make_url(url).get_backend_name() != 'postgresql':
             pytest.fail('--postgres requires a PostgreSQL DATABASE_URL in .env.')
     schema = None
     admin = None
     options = {}
-    if url.startswith('postgresql'):
+    if make_url(url).get_backend_name() == 'postgresql':
         # Every test owns a fresh schema; existing application tables are untouched.
         schema = 'test_' + uuid.uuid4().hex
         admin = create_engine(url)

@@ -1,0 +1,84 @@
+name: campus-compose-dev
+
+x-app: &app
+  image: campus-compose-dev-app:local
+  build: .
+  environment:
+    CAMPUS_LOAD_DOTENV: "0"
+    DB_HOST: db
+    DB_PORT: "5432"
+    DB_NAME: campus_dev
+    DB_USER: campus_dev
+    DB_PASSWORD_FILE: /run/secrets/app_password
+  secrets:
+    - app_password
+  networks:
+    - campus
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: campus_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    secrets:
+      - admin_password
+      - app_password
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/10-campus.sh:ro
+    networks:
+      - campus
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U campus_admin -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    # Intentionally no ports and no reference to the existing postgres_data volume.
+
+  migrate:
+    <<: *app
+    profiles: ["tools"]
+    command: ["python", "-m", "flask", "--app", "run", "db", "upgrade"]
+    restart: "no"
+
+  web:
+    <<: *app
+    networks:
+      - campus
+      - frontend
+    ports:
+      - "127.0.0.1:5001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/students?per_page=1', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  db_data:
+
+networks:
+  campus:
+    internal: true
+  frontend:
+
+secrets:
+  admin_password:
+    file: ./.local/compose/admin-password
+  app_password:
+    file: ./.local/compose/app-password

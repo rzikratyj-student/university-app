@@ -21,13 +21,13 @@ URL_PASSWORD = re.compile(r'\b[a-z][a-z0-9+.-]*://[^\s/:]+:([^\s/@]+)@', re.I)
 
 def source_paths():
     paths = set()
-    for directory in ('app', 'tests', 'migrations', 'scripts'):
+    for directory in ('app', 'tests', 'migrations', 'scripts', 'docker', '.github/workflows'):
         for path in (ROOT / directory).rglob('*'):
-            if '__pycache__' in path.parts or any(part.startswith('.') for part in path.relative_to(ROOT).parts):
+            if '__pycache__' in path.parts or any(part.startswith('.') and part != '.github' for part in path.relative_to(ROOT).parts):
                 continue
-            if path.is_file() and path.suffix.lower() in {'.py', '.ps1', '.html', '.css', '.js', '.md', '.txt', '.ini', '.mako', ''}:
+            if path.is_file() and path.suffix.lower() in {'.py', '.ps1', '.html', '.css', '.js', '.md', '.txt', '.ini', '.mako', '.sh', '.yml', '.yaml', ''}:
                 paths.add(path)
-    paths.update(p for p in ROOT.iterdir() if p.is_file() and p.suffix in {'.py', '.md', '.txt', '.json'})
+    paths.update(p for p in ROOT.iterdir() if p.is_file() and p.suffix in {'.py', '.md', '.txt', '.json', '.yaml', '.yml'})
     paths.add(ROOT / '.env.example')
     for name in json.loads((ROOT / 'source-manifest.json').read_text(encoding='utf-8-sig')):
         path = ROOT / name
@@ -51,6 +51,10 @@ def main():
     old_password = ROOT / '.local' / 'db-password'
     if old_password.is_file():
         known.append(old_password.read_text(encoding='utf-8').strip())
+    for name in ('admin-password', 'app-password'):
+        secret_file = ROOT / '.local' / 'compose' / name
+        if secret_file.is_file():
+            known.append(secret_file.read_text(encoding='utf-8').strip())
     findings = []
     paths = source_paths()
     for path in paths:
@@ -64,6 +68,9 @@ def main():
                 kinds.add('known-local-credential')
             for kind, pattern in PATTERNS.items():
                 for match in pattern.finditer(line):
+                    # psql :'variable' is substitution, not a literal password.
+                    if kind == 'literal-secret' and re.fullmatch(r"password\s+:'[A-Za-z_][A-Za-z0-9_]*'", match.group(0), re.I):
+                        continue
                     if kind != 'literal-secret' or match.group(1) not in PLACEHOLDERS:
                         kinds.add(kind)
             for match in URL_PASSWORD.finditer(line):

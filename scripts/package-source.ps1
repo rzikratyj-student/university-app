@@ -25,7 +25,7 @@ $manifest = @($manifest)
 if ($manifest.Count -eq 0) { throw 'Empty source manifest.' }
 $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $approved = @()
-$rootFiles = @('.gitignore', '.env.example', 'AGENTS.md', 'README.md', 'SECURITY_AUDIT.md', 'requirements.txt', 'source-manifest.json', 'config.py', 'run.py')
+$rootFiles = @('.gitignore', '.gitattributes', '.dockerignore', '.env.example', 'Dockerfile', 'compose.yaml', '.github/workflows/ci.yml', 'AGENTS.md', 'README.md', 'SECURITY_AUDIT.md', 'requirements.txt', 'source-manifest.json', 'config.py', 'run.py')
 foreach ($relative in $manifest) {
     if ($relative -isnot [string] -or $relative -match '\\|:|(^|/)\.{1,2}(/|$)' -or [IO.Path]::IsPathRooted($relative)) {
         throw 'Invalid relative source path.'
@@ -33,9 +33,9 @@ foreach ($relative in $manifest) {
     if (-not $seen.Add($relative)) { throw 'Duplicate source entry.' }
     $allowed = $rootFiles -ccontains $relative
     if (-not $allowed) {
-        $allowed = $relative -cmatch '^(app|tests|migrations|scripts)/[A-Za-z0-9_./-]+\.(py|ps1|html|css|js|md|txt|ini|mako)$' -or $relative -ceq 'migrations/README'
+        $allowed = $relative -cmatch '^(app|tests|migrations|scripts|docker)/[A-Za-z0-9_./-]+\.(py|ps1|html|css|js|md|txt|ini|mako|sh)$' -or $relative -ceq 'migrations/README'
     }
-    if (-not $allowed -or $relative -match '(^|/)(\.[^/]+|__pycache__|secrets|backups|pgdata|postgres-data|postgres_data)(/|$)' -and $relative -notin @('.gitignore', '.env.example')) {
+    if (-not $allowed -or $relative -match '(^|/)(\.[^/]+|__pycache__|secrets|backups|pgdata|postgres-data|postgres_data)(/|$)' -and $relative -notin @('.gitignore', '.gitattributes', '.dockerignore', '.env.example', '.github/workflows/ci.yml')) {
         throw 'Manifest contains a forbidden file.'
     }
     $full = [IO.Path]::GetFullPath((Join-Path $projectRoot $relative))

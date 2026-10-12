@@ -24,6 +24,9 @@ ZIP створюється в `.local/exports/` лише з файлів `source
 
 ## Поточна конфігурація: PostgreSQL у Docker
 
+Цей розділ описує початкове середовище на порту 5000. Для окремого
+середовища розробки на 5001 використовуйте Docker Compose нижче.
+
 Campus використовує контейнер `postgres-dev`, адресу `127.0.0.1:5432`,
 базу `campus` і окремого користувача `campus_app` без прав суперкористувача.
 Пароль збережено в `.env`; не публікуйте цей файл. База вже створена,
@@ -155,3 +158,127 @@ Node потрібен лише для додаткової перевірки с
 За погодженим обсягом авторизації немає: користувач із доступом до застосунку
 може змінювати всі записи. `run.py` запускає сервер лише на локальній адресі,
 без debug. Перед публічним розгортанням потрібні авторизація та production WSGI-сервер.
+
+## Ізольоване середовище Docker Compose
+
+Потрібні Docker Desktop у режимі Linux containers, Docker Compose v2.20+
+і вільний порт 5001. Локальний Python для запуску контейнерів не потрібен.
+Команди виконуйте з кореня цього проєкту.
+
+| Компонент | Адреса / зберігання |
+|---|---|
+| Новий project | `campus-compose-dev` |
+| Вебзастосунок | `http://127.0.0.1:5001` → Gunicorn `web:8000` |
+| Нова БД | PostgreSQL 18, `db:5432`, база/роль `campus_dev` |
+| Дані нової БД | Volume `campus-compose-dev_db_data` → `/var/lib/postgresql` |
+| Секрети | `.local/compose/admin-password` та `app-password` |
+| Наявне середовище | `postgres-dev`, `postgres_data`, порт 5432 — не використовується й не змінюється |
+
+PostgreSQL нового середовища не публікує портів на хості й підключена лише
+до внутрішньої мережі `campus`. Web додатково має мережу `frontend` для
+публікації строго loopback-порту. Авторизації в UI поки немає.
+Роль застосунку не суперкористувач, але володіє новою dev-базою для міграцій.
+Dockerfile запускає Gunicorn від UID 10001; коренева ФС app-контейнерів read-only.
+
+### Перший запуск і явні міграції
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/init-compose-secrets.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-compose.ps1
+```
+
+`Bypass` діє лише на цей процес PowerShell, не змінює системну політику.
+Використовуйте після перегляду локальних скриптів; за корпоративних обмежень
+застосовуйте погоджений спосіб виконання, не змінюйте GPO.
+
+Генератор не друкує й не змінює наявні секрети. Збережіть
+їх разом із локальним середовищем: новий пароль у файлі сам по собі не змінює
+пароль в уже ініціалізованій PostgreSQL. Compose secrets тут є файловими
+монтуваннями, не шифрованим сховищем; доступ до хоста/Docker слід обмежувати.
+Початкова `.env` не копіюється в образ і не передається сервісам.
+Compose та CI задають `CAMPUS_LOAD_DOTENV=0`, щоб вимкнути навіть читання `.env`.
+
+Запуск helper є явною командою застосувати міграції **лише нової dev-бази**:
+перевірка конфігурації → збірка → зупинка нового web (якщо він уже працює)
+→ healthy PostgreSQL → `migrate` із кодом 0 → healthy web.
+За помилки наступний крок не виконується. Міграції не запускаються
+автоматично entrypoint вебсервера: він лише перевіряє відповідність Alembic head
+і відмовляється стартувати на немігрованій/застарілій схемі.
+
+Еквівалентна ручна послідовність (наступний крок лише після успіху попереднього):
+
+```powershell
+docker compose -p campus-compose-dev config --quiet
+docker compose -p campus-compose-dev build web
+docker compose -p campus-compose-dev stop web
+docker compose -p campus-compose-dev up -d --wait db
+docker compose -p campus-compose-dev --profile tools run --rm migrate
+docker compose -p campus-compose-dev up -d --wait web
+```
+
+`run --rm` прибирає лише свій одноразовий контейнер міграцій; volume залишається.
+Нова БД спочатку порожня: автоматичного імпорту зі старої БД немає.
+Ініціалізація ролі через `docker/init-db.sh` відбувається лише для порожнього нового volume.
+
+### Зупинка та повторний запуск зі збереженням даних
+
+```powershell
+docker compose -p campus-compose-dev stop web db
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-compose.ps1
+```
+
+Не використовуйте `down -v`, `docker volume rm` або команди проти `postgres-dev`.
+`stop` зберігає контейнери, volume і записи. Перед майбутніми змінами міграцій
+потрібні перегляд та резервна копія; для первинної порожньої dev-бази імпорт не потрібен.
+
+### Перевірки нового середовища
+
+```powershell
+docker compose -p campus-compose-dev ps
+docker compose -p campus-compose-dev exec -T web python -m pytest -q -p no:cacheprovider
+docker compose -p campus-compose-dev exec -T web python -m pytest -q --postgres -p no:cacheprovider
+docker compose -p campus-compose-dev exec -T web python -m flask --app run db current
+docker compose -p campus-compose-dev exec -T web python -m flask --app run db check
+node --check app/static/js/app.js
+```
+
+SQLite працює в пам’яті. PostgreSQL-тести створюють і прибирають власні
+випадкові схеми лише в новій dev-базі. Прапорець `--postgres` надає
+`TEST_DATABASE_URL` пріоритет над конфігурацією застосунку, якщо він явно заданий.
+`DB_PASSWORD_FILE` разом із `DB_HOST/DB_PORT/DB_NAME/DB_USER` вибирає файлове
+підключення контейнера; інакше зберігається попередня поведінка `DATABASE_URL`.
+
+## GitHub Actions
+
+Workflow `.github/workflows/ci.yml` призначений для `rzikratyj-student/university-app`:
+push у `main`, pull request до `main` і ручний `workflow_dispatch`.
+
+- `sqlite-and-javascript`: Python 3.12, SQLite pytest, Node 22 syntax check,
+  сканер секретів і `docker compose config --quiet`.
+- `postgres`: Python 3.12, окрема PostgreSQL 18, застосування початкової
+  міграції, перевірка відповідності схеми та pytest.
+
+Збережених GitHub Secrets **не потрібно**. `scripts/ci_postgres.py` генерує
+одноразовий пароль, записує його в тимчасовий файл і передає через `_FILE`.
+Пароль не потрапляє до аргументів команд, workflow-файлу чи виводу; підключення
+тестів передається через середовище дочірнього процесу, його вивід редагується.
+Контейнер має випадкове ім’я, нові дані у tmpfs і випадковий loopback-порт
+runner. У `finally` видаляється лише цей створений контейнер; секрет прибирається.
+За примусового скасування job остаточне прибирання забезпечує тимчасовий hosted runner.
+
+CI не звертається до локальних `.env`, `postgres-dev`, `postgres_data` чи dev-volume.
+Оскільки довготривалих секретів немає, обидва jobs можуть працювати на PR із forks
+(із типовими правилами погодження GitHub для сторонніх внесків).
+Використано `pull_request`, не `pull_request_target`; права — лише `contents: read`,
+checkout не зберігає облікові дані. Actions зафіксовано за commit SHA.
+Workflow нічого не публікує й не розгортає.
+
+Локальна перевірка того самого PostgreSQL CI-helper (потрібні Docker і Python-залежності):
+
+```powershell
+./.venv/Scripts/python.exe scripts/ci_postgres.py
+```
+
+Це окремий одноразовий тест, а не робота з dev-базою. Фактичний статус Actions
+на GitHub з’явиться лише після окремо погодженого push; локальний запуск не є
+підтвердженням віддаленого workflow run.

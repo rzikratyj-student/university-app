@@ -174,7 +174,74 @@ symlink/junction, секретні каталоги та недозволені 
   Нічого не опубліковано. Повна перевірка ACL секретів, Git-історії поза
   цим каталогом, відновлення backup і повний пентест не входили до перевірки.
 
-## Джерела
+## Доповнення: Docker Compose та GitHub Actions (2026-10-12)
+
+Підготовлено окремий project `campus-compose-dev`. Це нове середовище, а не
+переналаштування наявного `postgres-dev`. Код тепер перебуває в локальному
+Git-репозиторії на гілці `main`; початковий розділ цього звіту про відсутність
+Git описує стан на момент попереднього аудиту.
+
+- `Dockerfile`: Python 3.12, Gunicorn, UID/GID 10001, явні COPY та дозволений
+  `.dockerignore` build context. Реальні конфігурація, кеші й локальні дані не включаються.
+- `compose.yaml`: web `127.0.0.1:5001`, внутрішній PostgreSQL 18 без host-портів,
+  новий volume `campus-compose-dev_db_data`. БД лише в internal-мережі; web має
+  додаткову frontend-мережу для loopback-публікації. Read-only app filesystem,
+  `/tmp` tmpfs, відкинуті capabilities, `no-new-privileges`.
+- Паролі нового середовища окремі, згенеровані криптографічно та передані
+  через файлові secrets. `.env` не копіюється й не читається контейнерами/CI.
+  Файлові Compose secrets не є шифрованим сховищем; права хоста залишаються важливими.
+- Нова роль `campus_dev` без superuser/createdb/createrole; вона володіє лише
+  dev-базою для явних міграцій. Новий initdb вимагає SCRAM для local і host.
+- `start-compose.ps1`: build → stop тільки нового web → healthy db → явний
+  migrate → web. Entry point web не мігрує: він відмовляє, якщо схема не на head.
+- CI: лише `contents: read`, Actions закріплені SHA, без persistent checkout
+  credentials, `push main` / `pull_request main` / ручний запуск. Немає
+  `pull_request_target`, deploy, push чи використання робочих паролів.
+- PostgreSQL CI запускається скриптом після генерації одноразового пароля,
+  а не service-контейнером до кроків job. Це дає змогу не зберігати пароль
+  у repository secrets і перевіряти також fork PR. Дані — tmpfs, порт —
+  випадковий loopback, ім’я — UUID; очищається лише власний тестовий контейнер.
+
+Перевірено локально:
+
+- Compose config — коректний; Docker build — успішний.
+- Відмова web перед початковою міграцією — підтверджена.
+- Нова міграція `0001 (head)`, schema check без розбіжностей.
+- PostgreSQL pytest у Linux/Python 3.12 Compose — **22 passed**.
+- SQLite pytest у Compose — **21 passed, 1 skipped** (кириличний регістр — PostgreSQL).
+- Одноразовий PostgreSQL CI-helper — **22 passed**, власний контейнер прибрано.
+- GitHub Actions workflow — успішна перевірка actionlint 1.7.7; shellcheck не запускався.
+- JavaScript syntax і сканер секретів — успішні.
+- HTTP на 5001 та CRUD синтетичного студента — успішні. Початкова dev-база
+  містила 0 студентів; перенесення з існуючої бази не виконувалося.
+- Запис зберігся після stop/start лише нових Compose-сервісів; після перевірки
+  видалено лише власний синтетичний запис.
+- ID існуючого `postgres-dev` не змінився; він працює, RestartCount=0,
+  час створення volume `postgres_data` не змінився. Команд зміни, зупинки
+  чи видалення цих ресурсів не виконувалося. Під час роботи StartedAt старого
+  контейнера змінився з `2026-10-12T17:10:32.257293562Z` на
+  `2026-10-12T18:02:00.547321339Z`. Причину не встановлено: запит збережених
+  Docker events для нього повернув порожній результат. Це спостереження
+  не слід трактувати як підтвердження незмінності часу роботи контейнера.
+
+GitHub workflow ще не запускався на сервері: push не виконувався.
+Авторизація застосунку та TLS не додані; середовище залишається локальним dev.
+Залежності/базові Docker-теги ще не повністю зафіксовані lock/digest;
+оновлення потребуватимуть окремої перевірки. Старий Docker/паролі не ротувалися.
+
+Перелік файлів цього етапу:
+
+- Створено: `Dockerfile`, `.dockerignore`, `.gitattributes`, `compose.yaml`,
+  `docker/init-db.sh`, `.github/workflows/ci.yml`, `scripts/init-compose-secrets.ps1`,
+  `scripts/start-compose.ps1`, `scripts/start_web.py`, `scripts/ci_postgres.py`,
+  `tests/test_container_config.py`.
+- Оновлено: `config.py`, `requirements.txt`, `tests/conftest.py`,
+  `tests/test_students.py`, `scripts/check_secrets.py`, `scripts/package-source.ps1`,
+  `source-manifest.json`, `README.md`, `AGENTS.md`, `SECURITY_AUDIT.md`.
+- Локальні паролі нового Compose та діагностика зберігаються лише в ігнорованій
+  `.local/`; чинна `.env` не змінювалася. Перевірений маніфест пакування містить 36 файлів.
+
+## Джерела та посилання
 
 - [Git: дія gitignore на невідстежувані файли](https://git-scm.com/docs/gitignore).
 - [Docker: початкова ініціалізація PostgreSQL та існуючі volumes](https://docs.docker.com/guides/postgresql/immediate-setup-and-data-persistence/).

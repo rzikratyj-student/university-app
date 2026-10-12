@@ -5,6 +5,11 @@
 - Flask + SQLAlchemy/pg8000, PostgreSQL, HTML/CSS/JavaScript. Інтерфейс українською.
 - Поточна локальна база: Docker `postgres-dev`, `127.0.0.1:5432`, база `campus`, роль `campus_app`.
 - `scripts/local_db.py` — окремий альтернативний кластер на `55432`; не підміняй ним Docker-конфігурацію.
+- Нове Compose-середовище має project `campus-compose-dev`, БД `campus_dev`, volume `campus-compose-dev_db_data`; web доступний лише на `127.0.0.1:5001`. БД не публікує портів хоста.
+- Не зупиняй і не змінюй `postgres-dev` / `postgres_data` під час роботи з Compose. Завжди передавай `-p campus-compose-dev`; не перевизначай project через оточення.
+- Міграції нового середовища запускаються явно через сервіс `migrate`. `start-compose.ps1` виконує build → stop нового web → healthy db → успішний migrate → web. Веб-entrypoint лише перевіряє версію схеми.
+- CI використовує `scripts/ci_postgres.py`: новий UUID-контейнер, одноразовий секрет, tmpfs та випадковий loopback-порт. Дозвіл на CI-тести включає прибирання лише контейнера, створеного цим викликом; не змінює правила для наявних контейнерів.
+- Для тестів Compose використовуй `docker compose -p campus-compose-dev exec -T web python -m pytest -q --postgres -p no:cacheprovider`; не спрямовуй їх на чинну базу через `.env`.
 - Перед роботою перевір актуальні файли й Git-статус. Зберігай зміни користувача.
 
 ## Секрети та персональні дані
